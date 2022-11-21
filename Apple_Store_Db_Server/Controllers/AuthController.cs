@@ -1,14 +1,11 @@
 ﻿using Apple_Store_Db_Server.Models;
 using Apple_Store_Db_Server.Services;
 using Apple_Store_Db_Server.ViewModel;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Security.Cryptography;
 
 namespace Apple_Store_Db_Server.Controllers
 {
@@ -19,22 +16,17 @@ namespace Apple_Store_Db_Server.Controllers
         
         private readonly IEncryptPassword _encrypted_password;
         private readonly IVerifyPassword _verify_password;
+        private readonly IEmailService _sendEmail;
         private readonly IConfiguration _configuration;
         private readonly ApplicationContext _context;
 
-        public AuthController(ApplicationContext context, IConfiguration configuration, IVerifyPassword verify_password, IEncryptPassword encrypted_password)
+        public AuthController(ApplicationContext context, IConfiguration configuration, IVerifyPassword verify_password, IEncryptPassword encrypted_password, IEmailService sendEmail)
         {
+            _sendEmail = sendEmail;
             _encrypted_password = encrypted_password;
             _verify_password = verify_password;
             _context = context;
             _configuration = configuration;
-        }
-
-        [HttpGet]
-        [Authorize(Roles = "Admin")]
-        public string GetOk()
-        {
-            return "Done";
         }
 
         [HttpPost("register")]
@@ -57,7 +49,7 @@ namespace Apple_Store_Db_Server.Controllers
                 PasswordSalt = salt
 
             };
-
+             
             if (user == null)
             {
                 return BadRequest();
@@ -65,6 +57,8 @@ namespace Apple_Store_Db_Server.Controllers
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
+            _sendEmail.SendEmail(request.Email, "Apple Store",
+                $"<h1>Congrats, {request.Name} you are member of our community</h1>");
             return Ok(user);
         }
 
@@ -106,7 +100,6 @@ namespace Apple_Store_Db_Server.Controllers
             await _context.SaveChangesAsync();
             return Ok();
         }
-
         [NonAction]
         private string CreateToken(User user)
         {

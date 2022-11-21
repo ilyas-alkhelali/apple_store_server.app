@@ -19,7 +19,7 @@ builder.Services.AddControllers();
 
 builder.Services.AddTransient<IEncryptPassword, EncryptPassword>();
 builder.Services.AddTransient<IVerifyPassword, VerifyPassword>();
-
+builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddSwaggerGen(options =>
 {
     options.AddSecurityDefinition("oauth2", new OpenApiSecurityScheme

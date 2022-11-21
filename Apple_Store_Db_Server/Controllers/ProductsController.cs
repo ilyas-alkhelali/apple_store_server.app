@@ -21,7 +21,7 @@ namespace Apple_Store_Db_Server.Controllers
             _context = context;
         }
 
-        [Authorize]
+       
         [HttpGet("getAllProducts")]
         public async Task<ActionResult<IEnumerable<Product>>> GetAllProducts()
         {

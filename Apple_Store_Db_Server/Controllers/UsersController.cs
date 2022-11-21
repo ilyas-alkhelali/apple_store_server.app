@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
 
 namespace Apple_Store_Db_Server.Controllers
 {
@@ -16,6 +17,7 @@ namespace Apple_Store_Db_Server.Controllers
             _context = context;
         }
       
+ 
         [HttpGet("getUsers")]
         public async Task<ActionResult<IEnumerable<User>>> GetUsers()
         {
@@ -26,7 +28,7 @@ namespace Apple_Store_Db_Server.Controllers
         public async Task<ActionResult<User>> GetUser(Guid id)
         {
             var user = await _context.Users.FindAsync(id);
-
+        
             if (user == null)
             {
                 return NotFound();
