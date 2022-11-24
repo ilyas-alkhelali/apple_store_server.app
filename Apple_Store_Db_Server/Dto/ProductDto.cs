@@ -9,7 +9,7 @@ namespace Apple_Store_Db_Server.ViewModels
         public string TypeName { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "field required")]
-        [StringLength(50, MinimumLength = 2, ErrorMessage = "minimum 2 symbols and maximun 50")]
+        [StringLength(50, MinimumLength = 1, ErrorMessage = "minimum 2 symbols and maximun 50")]
         public string Version { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "field required")]
