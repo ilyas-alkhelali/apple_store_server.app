@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using System.IO;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Apple_Store_Db_Server.Services;
 
 namespace Apple_Store_Db_Server.Controllers
 {
@@ -13,15 +14,14 @@ namespace Apple_Store_Db_Server.Controllers
     public class ProductsController : ControllerBase
     {
         private readonly ApplicationContext _context;
-        private readonly IWebHostEnvironment _webHostEnvironment;
+        private readonly IEmailService _sendEmail;
 
-        public ProductsController(ApplicationContext context)
+        public ProductsController(ApplicationContext context, IEmailService sendEmail)
         {
-
+            _sendEmail = sendEmail;
             _context = context;
         }
 
-       
         [HttpGet("getAllProducts")]
         public async Task<ActionResult<IEnumerable<Product>>> GetAllProducts()
         {
@@ -39,20 +39,20 @@ namespace Apple_Store_Db_Server.Controllers
                 {
                     products.Add(product);
                 }
-
             }
             
             return products;
         }
-        
+
+        [Authorize]
         [HttpGet("getOrders")]
         public async Task<ActionResult<IEnumerable<Order>>> GetOrders()
         {
-            return await _context.Orders.Include(p => p.Products).ToListAsync();
+            return await _context.Orders.Include(p => p.Products).ThenInclude(p => p.Product).ToListAsync();
         }
 
         [HttpGet("getProductById/{id}")]
-        public async Task<ActionResult<Product>> GetProductById(Guid ?id)
+        public async Task<ActionResult<Product>> GetProductById(Guid id)
         {
             if(id == null)
             {
@@ -68,59 +68,68 @@ namespace Apple_Store_Db_Server.Controllers
             return product;
         }
 
+        [Authorize]
         [HttpPut("updateProduct/{id}")]
         public async Task<IActionResult> PutProduct(Guid id, Product product)
         {
-            if (id != product.Id)
+            if (ModelState.IsValid)
             {
-                return BadRequest();
-            }
-
-            _context.Entry(product).State = EntityState.Modified;
-
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!ProductExists(id))
+                if (id != product.Id)
                 {
-                    return NotFound();
+                    return BadRequest();
                 }
-                else
-                {
-                    throw;
-                }
-            }
 
-            return NoContent();
+                _context.Entry(product).State = EntityState.Modified;
+
+                try
+                {
+                    await _context.SaveChangesAsync();
+                }
+                catch (DbUpdateConcurrencyException)
+                {
+                    if (!ProductExists(id))
+                    {
+                        return NotFound();
+                    }
+                    else
+                    {
+                        throw;
+                    }
+                }
+                return NoContent();
+            }
+            else return BadRequest();
         }
 
+        [Authorize]
         [HttpPost("addProduct")]
         public async Task<ActionResult<Product>> PostProduct(ProductDto prod)
         {
-            if (prod == null)
+            if (ModelState.IsValid)
             {
-                return BadRequest();
+                if (prod == null)
+                {
+                    return BadRequest();
+                }
+
+                Product product = new Product
+                {
+                    TypeName = prod.TypeName,
+                    Version = prod.Version,
+                    Price = prod.Price,
+                    Amount = prod.Amount,
+                    About = prod.About
+                };
+
+                _context.Products.Add(product);
+                await _context.SaveChangesAsync();
+
+                return Ok(product);
             }
-
-            Product product = new Product
-            {
-                TypeName = prod.TypeName,
-                Version = prod.Version,
-                Price = prod.Price,
-                Amount = prod.Amount,
-                About = prod.About
-            };
-
-            _context.Products.Add(product);
-            await _context.SaveChangesAsync();
-
-            return Ok(product);
+            else return BadRequest();
         }
 
-
+        [Authorize]
         [HttpDelete("deleteProduct/{id}")]
         public async Task<IActionResult> DeleteProduct(Guid id)
         {
@@ -137,69 +146,87 @@ namespace Apple_Store_Db_Server.Controllers
             return NoContent();
         }
 
+        [Authorize]
+        [HttpPut("generateRating/{id}/{rating}")]
+        public async Task<ActionResult<decimal>> GenerateRating(Guid id, double rating)
+        {
+            if (ModelState.IsValid)
+            {
+                if (rating == null)
+                {
+                    return BadRequest();
+                }
+                else if (id == null)
+                {
+                    return BadRequest();
+                }
+
+                Product product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
+
+                if (product == null)
+                {
+                    return BadRequest();
+                }
+                else
+                {
+                    product.SumOfRates += rating;
+                    product.NumberOfRated += (int)1;
+                    product.Rating = (double)(product.SumOfRates / product.NumberOfRated);
+                }
+
+                _context.Products.Update(product);
+                await _context.SaveChangesAsync();
+                return Ok(product.Rating);
+            }
+            else return BadRequest();
+        }
+
+        [Authorize]
+        [HttpPost("buy/{userId}")]
+        public async Task<ActionResult<Order>> createOrder(List<OrderDto> prod, Guid userId)
+        {
+            if (ModelState.IsValid)
+            {
+                User user = await _context.Users.FirstOrDefaultAsync(p => p.Id == userId);
+
+                Order order = new Order
+                {
+                    User = user,
+                };
+
+                foreach (var item in prod)
+                {
+
+                    BoughtProduct boughtProduct = new BoughtProduct
+                    {
+                        Amount = item.Amount,
+                        Capacity = item.Capacity,
+                        Product = item.Product,
+                        Order = order
+                    };
+
+                    order.Cost = order.Cost + item.Product.Price;
+                    order.Products.Add(boughtProduct);
+
+                    item.Product.Amount = item.Product.Amount - item.Amount;
+                    _context.Products.Update(item.Product);
+
+                };
+
+                _context.Orders.Add(order);
+                _context.Users.Update(user);
+                await _context.SaveChangesAsync();
+                _sendEmail.SendEmail(user.Email, "Apple Store",
+                    $"<h4>Congrats, {user.Name}, your order has been placed and will be delivered within 3-5 business days</h4>");
+                return Ok(order);
+            }
+            else return BadRequest();
+        }
+
+        [NonAction]
         private bool ProductExists(Guid id)
         {
             return _context.Products.Any(e => e.Id == id);
-        }
-
-        [HttpPut("generateRating/{id}/{rating}")]
-        public async Task<ActionResult<decimal>> GenerateRating(Guid id, decimal rating)
-        {
-            if(rating == null)
-            {
-                return BadRequest();
-            }
-            else if(id == null)
-            {
-                return NotFound();
-            }
-
-            Product product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
-
-            if(product.SumOfRates == null)
-            {
-                product.SumOfRates = 0;
-                product.SumOfRates += rating;
-                product.NumberOfRated += (int)1;
-                product.Rating = (decimal)product.SumOfRates / product.NumberOfRated;
-            }
-            else
-            {
-                product.SumOfRates += rating;
-                product.NumberOfRated += (int)1;
-                product.Rating = (decimal)product.SumOfRates / product.NumberOfRated;
-            }
-
-            _context.Products.Update(product);
-            await _context.SaveChangesAsync();
-            return Ok(product.Rating);
-        }
-
-        [HttpPost("buy")]
-        public async Task<ActionResult<Order>> createOrder(List<OrderDto> prod, Guid userId)
-        {
-            User user = await _context.Users.FirstOrDefaultAsync(p => p.Id == userId);
-
-            Order order = new Order
-            {
-                User = user,
-                UserId = user.Id
-            };
-
-            foreach(var item in prod) { 
-               
-                order.Cost = order.Cost + item.Product.Price;
-                order.Products.Add(item);
-
-                item.Product.Amount = item.Product.Amount - item.Amount;
-                _context.Products.Update(item.Product);
-
-            };
-           
-            _context.Orders.Add(order);
-            _context.Users.Update(user);
-            await _context.SaveChangesAsync();
-            return Ok(order);
         }
     }
 }

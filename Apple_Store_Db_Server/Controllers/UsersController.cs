@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 namespace Apple_Store_Db_Server.Controllers
 {
     [Route("api/[controller]")]
+    [Authorize]
     [ApiController]
     public class UsersController : ControllerBase
     {

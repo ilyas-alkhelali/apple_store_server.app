@@ -32,53 +32,61 @@ namespace Apple_Store_Db_Server.Controllers
         [HttpPost("register")]
         public async Task<ActionResult<User>> Register(RegisterDto ?request)
         {
-            if (request == null)
+            if (ModelState.IsValid)
             {
-                return BadRequest();
+                if (request == null)
+                {
+                    return BadRequest();
+                }
+
+                _encrypted_password.CreatePasswordHashandSalt(request.Password, out byte[] salt, out byte[] hash);
+
+                User user = new User
+                {
+                    Age = request.Age,
+                    Name = request.Name,
+                    Email = request.Email,
+                    PhoneNumber = request.PhoneNumber,
+                    PasswordHash = hash,
+                    PasswordSalt = salt
+
+                };
+
+                if (user == null)
+                {
+                    return BadRequest();
+                }
+
+                _context.Users.Add(user);
+                await _context.SaveChangesAsync();
+                _sendEmail.SendEmail(request.Email, "Apple Store",
+                    $"<h1>Congrats, {request.Name} you are member of our community</h1>");
+                return Ok(user);
             }
-
-            _encrypted_password.CreatePasswordHashandSalt(request.Password, out byte[] salt, out byte[] hash);
-
-            User user = new User
-            {
-                Age = request.Age,
-                Name = request.Name,
-                Email = request.Email,
-                PhoneNumber = request.PhoneNumber,
-                PasswordHash = hash,
-                PasswordSalt = salt
-
-            };
-             
-            if (user == null)
-            {
-                return BadRequest();
-            }
-
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
-            _sendEmail.SendEmail(request.Email, "Apple Store",
-                $"<h1>Congrats, {request.Name} you are member of our community</h1>");
-            return Ok(user);
+            else return BadRequest();
         }
 
         [HttpPost("login")]
         public async Task<ActionResult<string>> Login(LoginDto request)
         {
-            User user = await _context.Users.FirstOrDefaultAsync(p => p.Email == request.Email);
-
-            if (user == null)
+            if (ModelState.IsValid)
             {
-                return NotFound();
+                User user = await _context.Users.FirstOrDefaultAsync(p => p.Email == request.Email);
+
+                if (user == null)
+                {
+                    return NotFound();
+                }
+                if (!_verify_password.IsPasswordVerify(request.Password, user.PasswordSalt, user.PasswordHash))
+                {
+                    return NotFound();
+                }
+
+                string token = CreateToken(user);
+
+                return Ok(new { token, user });
             }
-            if (!_verify_password.IsPasswordVerify(request.Password, user.PasswordSalt, user.PasswordHash))
-            {
-                return NotFound();
-            } 
-
-            string token = CreateToken(user);
-
-            return Ok(new {token, user});
+            else return BadRequest();
         }
 
         [HttpDelete("removeAccount")]
